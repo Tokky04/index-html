@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>XRViewer WebXR確認</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Yu Gothic", "YuGothic", sans-serif;
+      margin: 0;
+      padding: 20px;
+      background: #f3f4f6;
+      color: #111827;
+    }
+
+    h1 {
+      font-size: 22px;
+      margin-bottom: 12px;
+    }
+
+    .card {
+      background: white;
+      padding: 16px;
+      border-radius: 14px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+      margin-bottom: 16px;
+    }
+
+    button {
+      width: 100%;
+      padding: 14px;
+      font-size: 18px;
+      border: none;
+      border-radius: 12px;
+      background: #2563eb;
+      color: white;
+      font-weight: bold;
+    }
+
+    button:disabled {
+      background: #9ca3af;
+    }
+
+    #status {
+      font-size: 16px;
+      line-height: 1.6;
+      white-space: pre-line;
+    }
+
+    .ok {
+      color: #047857;
+      font-weight: bold;
+    }
+
+    .ng {
+      color: #b91c1c;
+      font-weight: bold;
+    }
+
+    .small {
+      font-size: 14px;
+      color: #4b5563;
+      line-height: 1.6;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>XRViewer 動作確認</h1>
+
+  <div class="card">
+    <p class="small">
+      このページは、iPhone 15 Pro の XRViewer で WebXR / AR が使えるか確認するためのテストです。
+    </p>
+  </div>
+
+  <div class="card">
+    <button id="checkButton">XR対応を確認</button>
+  </div>
+
+  <div class="card">
+    <button id="startButton" disabled>ARを開始</button>
+  </div>
+
+  <div class="card">
+    <div id="status">まだ確認していません。</div>
+  </div>
+
+  <div class="card">
+    <p class="small">
+      判定の見方：<br>
+      「immersive-ar が使えます」と表示されれば、XRViewerでAR測定アプリを作れる可能性があります。<br>
+      「navigator.xr がありません」と表示された場合、そのXRViewerではWebXRが使えていません。
+    </p>
+  </div>
+
+  <script>
+    const checkButton = document.getElementById("checkButton");
+    const startButton = document.getElementById("startButton");
+    const statusBox = document.getElementById("status");
+
+    let xrSupported = false;
+
+    function setStatus(message, type = "") {
+      statusBox.className = type;
+      statusBox.textContent = message;
+    }
+
+    checkButton.addEventListener("click", async () => {
+      setStatus("確認中です...");
+
+      if (!("xr" in navigator)) {
+        xrSupported = false;
+        startButton.disabled = true;
+
+        setStatus(
+          "結果：WebXRは使えません。\n\n" +
+          "navigator.xr が見つかりませんでした。\n\n" +
+          "このXRViewerでは、HTMLからAR機能にアクセスできない可能性が高いです。",
+          "ng"
+        );
+        return;
+      }
+
+      try {
+        const supported = await navigator.xr.isSessionSupported("immersive-ar");
+
+        if (supported) {
+          xrSupported = true;
+          startButton.disabled = false;
+
+          setStatus(
+            "結果：WebXR ARが使えます。\n\n" +
+            "immersive-ar が利用可能です。\n\n" +
+            "次の段階として、2点を置いて距離を測るHTMLを作れます。",
+            "ok"
+          );
+        } else {
+          xrSupported = false;
+          startButton.disabled = true;
+
+          setStatus(
+            "結果：WebXRはありますが、ARモードは使えません。\n\n" +
+            "navigator.xr はあります。\n" +
+            "しかし immersive-ar は利用できませんでした。",
+            "ng"
+          );
+        }
+      } catch (error) {
+        xrSupported = false;
+        startButton.disabled = true;
+
+        setStatus(
+          "確認中にエラーが出ました。\n\n" +
+          error.message,
+          "ng"
+        );
+      }
+    });
+
+    startButton.addEventListener("click", async () => {
+      if (!xrSupported) {
+        setStatus("先にXR対応を確認してください。", "ng");
+        return;
+      }
+
+      try {
+        const session = await navigator.xr.requestSession("immersive-ar", {
+          requiredFeatures: ["local"]
+        });
+
+        setStatus(
+          "ARセッションを開始できました。\n\n" +
+          "XRViewerでAR機能が動いています。\n\n" +
+          "この環境なら、次に「2点間距離測定」の試作へ進めます。",
+          "ok"
+        );
+
+        session.addEventListener("end", () => {
+          setStatus("ARセッションが終了しました。", "");
+        });
+
+      } catch (error) {
+        setStatus(
+          "AR開始に失敗しました。\n\n" +
+          error.message,
+          "ng"
+        );
+      }
+    });
+  </script>
+
+</body>
+</html>
