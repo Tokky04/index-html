@@ -2,192 +2,486 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>XRViewer WebXR確認</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>下腿周径 簡易測定（基準スケール法）</title>
+
   <style>
+    :root {
+      --bg: #f4f6f8;
+      --card: #ffffff;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --blue: #2563eb;
+      --green: #047857;
+      --red: #dc2626;
+      --orange: #d97706;
+    }
+
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Yu Gothic", "YuGothic", sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Yu Gothic", "YuGothic", sans-serif;
       margin: 0;
-      padding: 20px;
-      background: #f3f4f6;
-      color: #111827;
+      padding: 14px;
+      background: var(--bg);
+      color: var(--text);
     }
 
     h1 {
       font-size: 22px;
-      margin-bottom: 12px;
+      margin: 8px 0 4px;
+    }
+
+    h2 {
+      font-size: 17px;
+      margin: 0 0 8px;
     }
 
     .card {
-      background: white;
-      padding: 16px;
-      border-radius: 14px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-      margin-bottom: 16px;
+      background: var(--card);
+      border-radius: 16px;
+      padding: 14px;
+      margin: 12px 0;
+      box-shadow: 0 3px 12px rgba(0,0,0,0.08);
+    }
+
+    .guide {
+      font-size: 14px;
+      line-height: 1.7;
+      color: var(--muted);
+    }
+
+    video, canvas {
+      width: 100%;
+      max-width: 720px;
+      display: block;
+      margin: 0 auto;
+      border-radius: 12px;
+      background: #000;
+      touch-action: manipulation;
     }
 
     button {
       width: 100%;
       padding: 14px;
-      font-size: 18px;
       border: none;
       border-radius: 12px;
-      background: #2563eb;
+      background: var(--blue);
       color: white;
-      font-weight: bold;
+      font-size: 16px;
+      font-weight: 700;
+      margin-top: 10px;
+    }
+
+    button.secondary {
+      background: #6b7280;
+    }
+
+    button.warning {
+      background: var(--orange);
     }
 
     button:disabled {
       background: #9ca3af;
     }
 
-    #status {
+    input, select {
+      width: 100%;
+      padding: 12px;
       font-size: 16px;
+      border-radius: 10px;
+      border: 1px solid #cbd5e1;
+      box-sizing: border-box;
+      margin-top: 6px;
+    }
+
+    label {
+      display: block;
+      font-size: 14px;
+      font-weight: 700;
+      margin-top: 10px;
+    }
+
+    .status {
+      font-size: 15px;
       line-height: 1.6;
       white-space: pre-line;
     }
 
-    .ok {
-      color: #047857;
-      font-weight: bold;
+    .result {
+      font-size: 20px;
+      font-weight: 800;
+      line-height: 1.6;
+      color: var(--green);
+      margin-top: 8px;
     }
 
-    .ng {
-      color: #b91c1c;
-      font-weight: bold;
+    .danger {
+      color: var(--red);
+      font-weight: 700;
     }
 
     .small {
-      font-size: 14px;
-      color: #4b5563;
+      font-size: 13px;
+      color: var(--muted);
       line-height: 1.6;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    @media (max-width: 420px) {
+      .row {
+        grid-template-columns: 1fr;
+      }
     }
   </style>
 </head>
+
 <body>
 
-  <h1>XRViewer 動作確認</h1>
+  <h1>下腿周径 簡易測定</h1>
+  <div class="small">スマホカメラ＋基準スケール法 / LiDARは使用しません</div>
 
   <div class="card">
-    <p class="small">
-      このページは、iPhone 15 Pro の XRViewer で WebXR / AR が使えるか確認するためのテストです。
-    </p>
+    <h2>測定の考え方</h2>
+    <div class="guide">
+      1. 10cmなど長さが分かっているマーカーを、下腿と同じ距離・同じ平面に置きます。<br>
+      2. 写真を撮影します。<br>
+      3. 基準マーカーの両端をタップします。<br>
+      4. 下腿の左右端をタップします。<br>
+      5. 基準マーカーから cm / pixel を計算し、下腿幅と推定周径を出します。
+    </div>
+  </div>
+
+  <div class="card" id="cameraCard">
+    <video id="video" autoplay playsinline muted></video>
+    <button id="startCameraBtn">カメラ開始</button>
+    <button id="captureBtn" disabled>撮影して固定</button>
+  </div>
+
+  <div class="card" id="analysisCard" style="display:none;">
+    <canvas id="canvas"></canvas>
+
+    <label for="scaleLengthCm">基準スケールの実長（cm）</label>
+    <input type="number" id="scaleLengthCm" value="10" step="0.1" min="0.1" />
+
+    <label for="circumferenceModel">周径推定モデル</label>
+    <select id="circumferenceModel">
+      <option value="circle">円近似：周径 = π × 横幅</option>
+      <option value="ellipse082" selected>楕円近似：前後径 = 横幅 × 0.82</option>
+      <option value="ellipse090">楕円近似：前後径 = 横幅 × 0.90</option>
+    </select>
+
+    <div class="row">
+      <button id="scaleModeBtn">① 基準2点をタップ</button>
+      <button id="calfModeBtn" disabled>② 下腿2点をタップ</button>
+    </div>
+
+    <button class="secondary" id="undoBtn">1点戻す</button>
+    <button class="warning" id="resetBtn">全てリセット</button>
+
+    <div class="card" style="box-shadow:none; border:1px solid #e5e7eb;">
+      <div id="status" class="status">写真を撮影してください。</div>
+      <div id="result" class="result"></div>
+    </div>
   </div>
 
   <div class="card">
-    <button id="checkButton">XR対応を確認</button>
-  </div>
-
-  <div class="card">
-    <button id="startButton" disabled>ARを開始</button>
-  </div>
-
-  <div class="card">
-    <div id="status">まだ確認していません。</div>
-  </div>
-
-  <div class="card">
-    <p class="small">
-      判定の見方：<br>
-      「immersive-ar が使えます」と表示されれば、XRViewerでAR測定アプリを作れる可能性があります。<br>
-      「navigator.xr がありません」と表示された場合、そのXRViewerではWebXRが使えていません。
-    </p>
+    <h2>注意</h2>
+    <div class="guide">
+      このアプリは研究・臨床用の確定測定器ではありません。衣服、背景、撮影距離、角度、下腿断面の非円形性で誤差が出ます。<br>
+      実用化する場合は、巻尺測定との一致度、ICC、SEM、MDC、Bland-Altman解析などで妥当性を検証してください。
+    </div>
   </div>
 
   <script>
-    const checkButton = document.getElementById("checkButton");
-    const startButton = document.getElementById("startButton");
-    const statusBox = document.getElementById("status");
+    const video = document.getElementById("video");
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
 
-    let xrSupported = false;
+    const startCameraBtn = document.getElementById("startCameraBtn");
+    const captureBtn = document.getElementById("captureBtn");
+    const analysisCard = document.getElementById("analysisCard");
 
-    function setStatus(message, type = "") {
-      statusBox.className = type;
-      statusBox.textContent = message;
+    const scaleModeBtn = document.getElementById("scaleModeBtn");
+    const calfModeBtn = document.getElementById("calfModeBtn");
+    const undoBtn = document.getElementById("undoBtn");
+    const resetBtn = document.getElementById("resetBtn");
+
+    const scaleLengthCmInput = document.getElementById("scaleLengthCm");
+    const circumferenceModel = document.getElementById("circumferenceModel");
+    const statusDiv = document.getElementById("status");
+    const resultDiv = document.getElementById("result");
+
+    let stream = null;
+    let imageBitmap = null;
+    let mode = "scale";
+    let scalePoints = [];
+    let calfPoints = [];
+
+    async function startCamera() {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: "environment" },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 }
+          },
+          audio: false
+        });
+
+        video.srcObject = stream;
+        captureBtn.disabled = false;
+        statusDiv.textContent = "カメラが起動しました。下腿と基準スケールを同じ距離に置いて撮影してください。";
+      } catch (error) {
+        alert(
+          "カメラを起動できませんでした。\n\n" +
+          "HTTPSで開いているか、カメラ権限を確認してください。\n\n" +
+          error.message
+        );
+      }
     }
 
-    checkButton.addEventListener("click", async () => {
-      setStatus("確認中です...");
-
-      if (!("xr" in navigator)) {
-        xrSupported = false;
-        startButton.disabled = true;
-
-        setStatus(
-          "結果：WebXRは使えません。\n\n" +
-          "navigator.xr が見つかりませんでした。\n\n" +
-          "このXRViewerでは、HTMLからAR機能にアクセスできない可能性が高いです。",
-          "ng"
-        );
+    function captureImage() {
+      if (!video.videoWidth || !video.videoHeight) {
+        alert("カメラ映像がまだ準備できていません。数秒待ってください。");
         return;
       }
 
-      try {
-        const supported = await navigator.xr.isSessionSupported("immersive-ar");
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      imageBitmap = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
-        if (supported) {
-          xrSupported = true;
-          startButton.disabled = false;
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+        stream = null;
+      }
 
-          setStatus(
-            "結果：WebXR ARが使えます。\n\n" +
-            "immersive-ar が利用可能です。\n\n" +
-            "次の段階として、2点を置いて距離を測るHTMLを作れます。",
-            "ok"
-          );
-        } else {
-          xrSupported = false;
-          startButton.disabled = true;
+      video.style.display = "none";
+      startCameraBtn.style.display = "none";
+      captureBtn.style.display = "none";
+      analysisCard.style.display = "block";
 
-          setStatus(
-            "結果：WebXRはありますが、ARモードは使えません。\n\n" +
-            "navigator.xr はあります。\n" +
-            "しかし immersive-ar は利用できませんでした。",
-            "ng"
-          );
+      mode = "scale";
+      scalePoints = [];
+      calfPoints = [];
+      updateStatus();
+      redraw();
+    }
+
+    function canvasPointFromEvent(event) {
+      const rect = canvas.getBoundingClientRect();
+      const clientX = event.touches ? event.touches[0].clientX : event.clientX;
+      const clientY = event.touches ? event.touches[0].clientY : event.clientY;
+
+      return {
+        x: (clientX - rect.left) * canvas.width / rect.width,
+        y: (clientY - rect.top) * canvas.height / rect.height
+      };
+    }
+
+    function handleCanvasTap(event) {
+      event.preventDefault();
+
+      if (!imageBitmap) return;
+
+      const point = canvasPointFromEvent(event);
+
+      if (mode === "scale") {
+        if (scalePoints.length < 2) {
+          scalePoints.push(point);
         }
-      } catch (error) {
-        xrSupported = false;
-        startButton.disabled = true;
 
-        setStatus(
-          "確認中にエラーが出ました。\n\n" +
-          error.message,
-          "ng"
-        );
+        if (scalePoints.length === 2) {
+          calfModeBtn.disabled = false;
+          mode = "calf";
+        }
+      } else if (mode === "calf") {
+        if (calfPoints.length < 2) {
+          calfPoints.push(point);
+        }
       }
-    });
 
-    startButton.addEventListener("click", async () => {
-      if (!xrSupported) {
-        setStatus("先にXR対応を確認してください。", "ng");
+      redraw();
+      updateStatus();
+      calculate();
+    }
+
+    function setScaleMode() {
+      mode = "scale";
+      updateStatus();
+    }
+
+    function setCalfMode() {
+      if (scalePoints.length < 2) {
+        alert("先に基準スケールの2点を選択してください。");
         return;
       }
 
-      try {
-        const session = await navigator.xr.requestSession("immersive-ar", {
-          requiredFeatures: ["local"]
-        });
+      mode = "calf";
+      updateStatus();
+    }
 
-        setStatus(
-          "ARセッションを開始できました。\n\n" +
-          "XRViewerでAR機能が動いています。\n\n" +
-          "この環境なら、次に「2点間距離測定」の試作へ進めます。",
-          "ok"
-        );
-
-        session.addEventListener("end", () => {
-          setStatus("ARセッションが終了しました。", "");
-        });
-
-      } catch (error) {
-        setStatus(
-          "AR開始に失敗しました。\n\n" +
-          error.message,
-          "ng"
-        );
+    function undoPoint() {
+      if (mode === "calf" && calfPoints.length > 0) {
+        calfPoints.pop();
+      } else if (mode === "scale" && scalePoints.length > 0) {
+        scalePoints.pop();
+      } else if (calfPoints.length > 0) {
+        calfPoints.pop();
+        mode = "calf";
+      } else if (scalePoints.length > 0) {
+        scalePoints.pop();
+        mode = "scale";
       }
-    });
+
+      if (scalePoints.length < 2) {
+        calfModeBtn.disabled = true;
+      }
+
+      redraw();
+      updateStatus();
+      calculate();
+    }
+
+    function resetAll() {
+      scalePoints = [];
+      calfPoints = [];
+      mode = "scale";
+      calfModeBtn.disabled = true;
+      resultDiv.innerHTML = "";
+      redraw();
+      updateStatus();
+    }
+
+    function distance(p1, p2) {
+      const dx = p1.x - p2.x;
+      const dy = p1.y - p2.y;
+      return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    function redraw() {
+      if (!imageBitmap) return;
+
+      ctx.putImageData(imageBitmap, 0, 0);
+
+      drawPointsAndLine(scalePoints, "#22c55e", "基準");
+      drawPointsAndLine(calfPoints, "#ef4444", "下腿");
+    }
+
+    function drawPointsAndLine(points, color, label) {
+      if (points.length >= 2) {
+        ctx.beginPath();
+        ctx.moveTo(points[0].x, points[0].y);
+        ctx.lineTo(points[1].x, points[1].y);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = Math.max(4, canvas.width / 250);
+        ctx.stroke();
+      }
+
+      points.forEach((p, i) => {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, Math.max(8, canvas.width / 180), 0, Math.PI * 2);
+        ctx.fillStyle = color;
+        ctx.fill();
+
+        ctx.font = `${Math.max(22, canvas.width / 55)}px sans-serif`;
+        ctx.lineWidth = 5;
+        ctx.strokeStyle = "black";
+        ctx.fillStyle = "white";
+
+        const text = `${label}${i + 1}`;
+        ctx.strokeText(text, p.x + 14, p.y - 14);
+        ctx.fillText(text, p.x + 14, p.y - 14);
+      });
+    }
+
+    function calculateEllipseCircumference(widthCm, depthCm) {
+      const a = widthCm / 2;
+      const b = depthCm / 2;
+
+      return Math.PI * (
+        3 * (a + b) -
+        Math.sqrt((3 * a + b) * (a + 3 * b))
+      );
+    }
+
+    function calculate() {
+      resultDiv.innerHTML = "";
+
+      if (scalePoints.length < 2 || calfPoints.length < 2) return;
+
+      const scaleLengthCm = parseFloat(scaleLengthCmInput.value);
+
+      if (!Number.isFinite(scaleLengthCm) || scaleLengthCm <= 0) {
+        resultDiv.innerHTML = "<span class='danger'>基準スケール長を正しく入力してください。</span>";
+        return;
+      }
+
+      const scalePx = distance(scalePoints[0], scalePoints[1]);
+      const calfPx = distance(calfPoints[0], calfPoints[1]);
+
+      if (scalePx <= 0 || calfPx <= 0) {
+        resultDiv.innerHTML = "<span class='danger'>2点の位置を確認してください。</span>";
+        return;
+      }
+
+      const cmPerPx = scaleLengthCm / scalePx;
+      const calfWidthCm = calfPx * cmPerPx;
+
+      let circumferenceCm;
+      let depthCm = null;
+      let modelText = "";
+
+      if (circumferenceModel.value === "circle") {
+        circumferenceCm = Math.PI * calfWidthCm;
+        modelText = "円近似";
+      } else {
+        const ratio = circumferenceModel.value === "ellipse090" ? 0.90 : 0.82;
+        depthCm = calfWidthCm * ratio;
+        circumferenceCm = calculateEllipseCircumference(calfWidthCm, depthCm);
+        modelText = `楕円近似（前後径 = 横幅 × ${ratio.toFixed(2)}）`;
+      }
+
+      resultDiv.innerHTML =
+        `下腿横幅：${calfWidthCm.toFixed(2)} cm<br>` +
+        (depthCm !== null ? `推定前後径：${depthCm.toFixed(2)} cm<br>` : "") +
+        `推定周径：${circumferenceCm.toFixed(2)} cm<br>` +
+        `<span class="small">モデル：${modelText}<br>` +
+        `基準：${scaleLengthCm.toFixed(1)} cm = ${scalePx.toFixed(1)} px / 下腿幅：${calfPx.toFixed(1)} px</span>`;
+    }
+
+    function updateStatus() {
+      if (!imageBitmap) {
+        statusDiv.textContent = "写真を撮影してください。";
+        return;
+      }
+
+      if (mode === "scale") {
+        statusDiv.textContent =
+          `基準スケールの両端をタップしてください。\n` +
+          `選択済み：${scalePoints.length}/2点`;
+      } else {
+        statusDiv.textContent =
+          `下腿の左右端をタップしてください。\n` +
+          `選択済み：${calfPoints.length}/2点`;
+      }
+    }
+
+    startCameraBtn.addEventListener("click", startCamera);
+    captureBtn.addEventListener("click", captureImage);
+    scaleModeBtn.addEventListener("click", setScaleMode);
+    calfModeBtn.addEventListener("click", setCalfMode);
+    undoBtn.addEventListener("click", undoPoint);
+    resetBtn.addEventListener("click", resetAll);
+    scaleLengthCmInput.addEventListener("input", calculate);
+    circumferenceModel.addEventListener("change", calculate);
+
+    canvas.addEventListener("click", handleCanvasTap);
+    canvas.addEventListener("touchstart", handleCanvasTap, { passive: false });
   </script>
 
 </body>
